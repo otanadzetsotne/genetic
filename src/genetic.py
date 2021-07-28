@@ -1,15 +1,93 @@
 import random
 import pickle
 from typing import Optional
+from abc import ABC, abstractmethod
 
+import keras
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from dtypes import *
+from src.dtypes import *
 
 
-class Genetic:
+class ModelGenerator(ABC):
+    @classmethod
+    def _add_layers(
+            cls,
+            genome,
+            base_structure,
+    ):
+        """
+        Add layers to model structure
+        :param genome:
+        :param base_structure:
+        :return: Keras model structure
+        """
+
+        for dna in genome:
+            shape = dna[0]
+            activation = dna[1]
+            base_structure = layers.Dense(shape, activation=activation)(base_structure)
+
+        return base_structure
+
+    @classmethod
+    def _generate_base(
+            cls,
+            individual: Individual,
+            input_layer,
+    ):
+        """
+        Create base model structure, same for all types of models
+        :param individual:
+        :param input_layer:
+        :return:
+        """
+
+        return cls._add_layers(individual, input_layer)
+
+    @classmethod
+    @abstractmethod
+    def _generate_output(
+            cls,
+            individual: Individual,
+            output_shape: int,
+            structure,
+    ):
+        raise Exception('Method not implemented')
+
+    @classmethod
+    def generate(
+            cls,
+            individual: Individual,
+            input_shape: int,
+            output_shape: int,
+    ) -> keras.Model:
+        """
+        Create neural network model
+        :param individual:
+        :param input_shape:
+        :param output_shape:
+        :return:
+        """
+
+        # create model layers
+        input_layer = tf.keras.Input(shape=(input_shape,))
+        structure = cls._generate_base(individual, input_layer)
+        structure = cls._generate_output(individual, output_shape, structure)
+
+        # create model
+        model = tf.keras.Model(input_layer, structure)
+        model.compile(
+            optimizer='Adam',
+            loss='mean_squared_error',
+        )
+
+        return model
+
+
+class Genetic(ABC):
     __best_individual_path = 'best.pickle'
 
     __data_train = None
@@ -18,6 +96,11 @@ class Genetic:
     __labels_train = None
     __labels_validation = None
     __labels_test = None
+
+    @property
+    @abstractmethod
+    def model_generator(self) -> ModelGenerator:
+        raise Exception('Property not implemented')
 
     def __init__(
             self,
@@ -93,7 +176,6 @@ class Genetic:
 
         genome_len = random.randint(self.__genome_len_min, self.__genome_len_max)
         individual = [self.__make_dna() for _ in range(genome_len)]
-        individual.append(self.__make_dna(self.__output_shape))
 
         return individual
 
@@ -116,7 +198,7 @@ class Genetic:
         :return: Mutated individual
         """
 
-        genome_to_mutate = random.randint(0, len(individual) - 2)
+        genome_to_mutate = random.randint(0, len(individual))
         individual_mutated = individual[:genome_to_mutate] + [self.__make_dna()] + individual[genome_to_mutate + 1:]
 
         return individual_mutated
@@ -157,46 +239,11 @@ class Genetic:
             :return: Child
             """
 
-            genome_cut_index = random.randint(1, min(len(p_0), len(p_1)) - 1)
+            genome_cut_index = random.randint(0, min(len(p_0), len(p_1)) - 1)
             child = p_0[:genome_cut_index] + p_1[genome_cut_index:]
             return child
 
         return [pair(parent_0, parent_1) for parent_0, parent_1 in parents]
-
-    def __make_model(self, individual: Individual):
-        """
-        Create keras model from individual's genome
-        :param individual:
-        :return: Keras model
-        """
-
-        def add_layers(genome, base_structure):
-            """
-            Add layers to model structure
-            :param genome:
-            :param base_structure:
-            :return: Keras model structure
-            """
-
-            for dna in genome:
-                shape = dna[0]
-                activation = dna[1]
-                base_structure = layers.Dense(shape, activation=activation)(base_structure)
-
-            return base_structure
-
-        # create model layers
-        input_layer = tf.keras.Input(shape=(self.__input_shape,))
-        structure = add_layers(individual, input_layer)
-
-        # create model
-        model = tf.keras.Model(input_layer, structure)
-        model.compile(
-            optimizer='Adam',
-            loss='mean_squared_error',
-        )
-
-        return model
 
     def __fit(
             self,
@@ -215,7 +262,7 @@ class Genetic:
         # make score for each individual in population
         for individual in population:
             # create model by individuals genome
-            model = self.__make_model(individual)
+            model = self.model_generator.generate(individual, self.__input_shape, self.__output_shape)
             # train model
             model.fit(
                 self.__class__.__data_train,
@@ -301,6 +348,6 @@ class Genetic:
             population += [self.__make_individual() for _ in range(3)]
             print(f'New population created: {population}')
 
-            need_continue = input('Continue? ')
-            if need_continue.lower() != 'y':
-                break
+            # need_continue = input('Continue? ')
+            # if need_continue.lower() != 'y':
+            #     break
