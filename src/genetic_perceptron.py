@@ -7,6 +7,7 @@ class _ModelGeneratorPerceptron(ModelGenerator):
     def _generate_output(
             cls,
             individual: Individual,
+            input_shape: int,
             output_shape: int,
             structure,
     ):

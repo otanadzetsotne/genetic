@@ -52,6 +52,7 @@ class ModelGenerator(ABC):
     def _generate_output(
             cls,
             individual: Individual,
+            input_shape: int,
             output_shape: int,
             structure,
     ):
@@ -75,7 +76,7 @@ class ModelGenerator(ABC):
         # create model layers
         input_layer = tf.keras.Input(shape=(input_shape,))
         structure = cls._generate_base(individual, input_layer)
-        structure = cls._generate_output(individual, output_shape, structure)
+        structure = cls._generate_output(individual, input_shape, output_shape, structure)
 
         # create model
         model = tf.keras.Model(input_layer, structure)
