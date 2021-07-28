@@ -136,38 +136,31 @@ class Genetic(ABC):
         self.__class__.__labels_validation = labels[counter_train:counter_validation]
         self.__class__.__labels_test = labels[counter_validation:]
 
-    def __random_shape(self) -> int:
-        """
-        Returns layer random shape
-        :return: Layer output shape
-        """
-
-        return random.randint(self.__genome_width_min, self.__genome_width_max)
-
-    def __random_activation(self) -> str:
-        """
-        Returns layer random activation
-        :return: Layer activation function name
-        """
-
-        return random.choice(self.__model_activations)
-
     def __make_dna(
             self,
-            layer_shape: Optional[int] = None,
-            layer_activation: Optional[str] = None,
+            dna_neurons_min: Optional[int] = None,
+            dna_neurons_max: Optional[int] = None,
+            dna_activations: Optional[list] = None,
+            dna_neurons: Optional[int] = None,
+            dna_activation: Optional[str] = None,
     ) -> DNA:
         """
         Creates genome's DNA
-        :param layer_shape:
-        :param layer_activation:
+        :param dna_neurons:
+        :param dna_neurons_min:
+        :param dna_neurons_max:
+        :param dna_activation:
         :return: DNA code
         """
 
-        layer_shape = layer_shape if layer_shape else self.__random_shape()
-        layer_activation = layer_activation if layer_activation else self.__random_activation()
+        dna_neurons_min = dna_neurons_min or self.__genome_width_min
+        dna_neurons_max = dna_neurons_max or self.__genome_width_max
+        dna_neurons = dna_neurons or random.randint(dna_neurons_min, dna_neurons_max)
 
-        return [layer_shape, layer_activation]
+        dna_activations = dna_activations or self.__model_activations
+        dna_activation = dna_activation or random.choice(dna_activations)
+
+        return [dna_neurons, dna_activation]
 
     def __make_individual(self) -> Individual:
         """
@@ -175,10 +168,21 @@ class Genetic(ABC):
         :return: Individual
         """
 
-        genome_len = random.randint(self.__genome_len_min, self.__genome_len_max)
-        individual = [self.__make_dna() for _ in range(genome_len)]
+        dna_neurons_max = self.__genome_width_max
+        genome_len = random.randint(
+            self.__genome_len_min,
+            self.__genome_len_max,
+        )
 
-        return individual
+        genome = []
+        for _ in range(genome_len):
+            # add dna to genome code
+            dna = self.__make_dna(dna_neurons_max=dna_neurons_max)
+            genome.append(dna)
+            # update genome max neurons for correct layers architecture
+            dna_neurons_max = dna[0]
+
+        return genome
 
     def __make_population(
             self,
@@ -199,10 +203,27 @@ class Genetic(ABC):
         :return: Mutated individual
         """
 
-        genome_to_mutate = random.randint(0, len(individual))
-        individual_mutated = individual[:genome_to_mutate] + [self.__make_dna()] + individual[genome_to_mutate + 1:]
+        # choose random dna
+        dna_index = random.randint(0, len(individual) - 1)
+        # we need genome's length to get min/max values of dna neurons quantity
+        genome_len = len(individual)
 
-        return individual_mutated
+        # first set min/max value as global
+        dna_neurons_min = self.__genome_width_min
+        dna_neurons_max = self.__genome_width_max
+
+        # if we have deep genome
+        if genome_len > 1:
+            dna_neurons_min = dna_neurons_min if dna_index == genome_len - 1 else individual[dna_index][0]
+            dna_neurons_max = dna_neurons_max if dna_index == 0 else individual[dna_index - 1][0]
+
+        # dna mutation
+        individual[dna_index] = self.__make_dna(
+            dna_neurons_min=dna_neurons_min,
+            dna_neurons_max=dna_neurons_max,
+        )
+
+        return individual
 
     @staticmethod
     def __mating(population) -> Parents:
