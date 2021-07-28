@@ -29,8 +29,7 @@ class Genetic:
             genome_len_min: int = 1,
             genome_width_max: int = 100,
             genome_width_min: int = 10,
-            model_activations: list = activations,
-            is_auto_encoder: bool = False,
+            model_activations: list[str] = activations,
     ):
         self.__input_shape = input_shape
         self.__output_shape = output_shape
@@ -39,7 +38,6 @@ class Genetic:
         self.__genome_width_max = genome_width_max
         self.__genome_width_min = genome_width_min
         self.__model_activations = model_activations
-        self.__is_auto_encoder = is_auto_encoder
 
         # prepare data splitting
         data_len = len(data)
@@ -190,7 +188,7 @@ class Genetic:
         # create model layers
         input_layer = tf.keras.Input(shape=(self.__input_shape,))
         structure = add_layers(individual, input_layer)
-        structure = add_layers(individual[1::-1], structure) if self.__is_auto_encoder else structure
+
         # create model
         model = tf.keras.Model(input_layer, structure)
         model.compile(
@@ -210,6 +208,9 @@ class Genetic:
         :return: Scores
         """
 
+        batch_size = min(256, len(self.__class__.__data_train))
+        validation_data = (self.__class__.__data_validation, self.__class__.__labels_validation)
+
         scores = []
         # make score for each individual in population
         for individual in population:
@@ -220,8 +221,8 @@ class Genetic:
                 self.__class__.__data_train,
                 self.__class__.__labels_train,
                 epochs=30,
-                batch_size=min(256, len(self.__class__.__data_train)),
-                validation_data=(self.__class__.__data_validation, self.__class__.__labels_validation),
+                batch_size=batch_size,
+                validation_data=validation_data,
                 use_multiprocessing=True,
                 verbose=False,
             )
@@ -256,7 +257,7 @@ class Genetic:
         :param population_len: quantity of individuals in population
         """
 
-        best_score = 0
+        best_score = float('inf')
         population = self.__make_population(population_len)
         print(f'Population created: {population}')
 
@@ -277,8 +278,8 @@ class Genetic:
             print(f'Best individual mutated: {individual_best_mutated}')
 
             # check best individual's progression
-            best_score_tmp = max(scores)
-            if best_score_tmp > best_score:
+            best_score_tmp = min(scores)
+            if best_score_tmp < best_score:
                 best_score = best_score_tmp
                 with open(self.__best_individual_path, 'wb') as f:
                     pickle.dump(individual_best, f)
@@ -289,9 +290,17 @@ class Genetic:
             print(f'Couples created: {couples}')
             children = self.__pairing(couples)
             print(f'Children created: {children}')
-            children = self.__random_die(children, 3)
+
+            children = self.__random_die(children, 5)
             print(f'Children died randomly: {children}')
 
             # create new population for next epoch
-            population = [individual_best] + [individual_best_mutated] + children + [self.__make_individual()]
+            population = [individual_best]
+            population += [individual_best_mutated]
+            population += children
+            population += [self.__make_individual() for _ in range(3)]
             print(f'New population created: {population}')
+
+            need_continue = input('Continue? ')
+            if need_continue.lower() != 'y':
+                break
